@@ -1,30 +1,45 @@
 # -*- coding: utf-8 -*-
 
 import struct
-from math import cos, asin, sqrt
+from math import asin, cos, sqrt
+
 from colorama import init
-from s2sphere import CellId, LatLng
+
 init()
 
+TIME_PERIODS = (
+    (60, 'minute'),
+    (3600, 'hour'),
+    (86400, 'day'),
+    (86400*7, 'week')
+)
 
-def get_cellid(lat, long, radius=10):
-    origin = CellId.from_lat_lng(LatLng.from_degrees(lat, long)).parent(15)
-    walk = [origin.id()]
+FORT_CACHE = {}
+def fort_details(bot, fort_id, latitude, longitude):
+    """
+    Lookup fort metadata and (if possible) serve from cache.
+    """
 
-    # 10 before and 10 after
-    next = origin.next()
-    prev = origin.prev()
-    for i in range(radius):
-        walk.append(prev.id())
-        walk.append(next.id())
-        next = next.next()
-        prev = prev.prev()
-    return sorted(walk)
+    if fort_id not in FORT_CACHE:
+        """
+        Lookup the fort details and cache the response for future use.
+        """
+        bot.api.fort_details(fort_id=fort_id, latitude=latitude, longitude=longitude)
+
+        try:
+            response_dict = bot.api.call()
+            FORT_CACHE[fort_id] = response_dict['responses']['FORT_DETAILS']
+        except Exception:
+            pass
+
+    # Just to avoid KeyErrors
+    return FORT_CACHE.get(fort_id, {})
 
 def encode(cellid):
     output = []
     encoder._VarintEncoder()(output.append, cellid)
     return ''.join(output)
+
 
 def distance(lat1, lon1, lat2, lon2):
     p = 0.017453292519943295
@@ -102,16 +117,17 @@ def format_dist(distance, unit):
 
 def format_time(seconds):
     # Return a string displaying the time given as seconds or minutes
-    if seconds <= 0.0:
-        return '{:.2f} seconds'.format(seconds)
-    elif seconds <= 1.0:
-        return '{:.2f} second'.format(seconds)
-    elif seconds < 60:
-        return '{:.2f} seconds'.format(seconds)
-    elif seconds > 60 and seconds < 3600:
-        minutes = seconds / 60
-        return '{:.2f} minutes'.format(minutes)
-    return '{:.2f} seconds'.format(seconds)
+    num, duration = 0, long(round(seconds))
+    runtime = []
+    for period, unit in TIME_PERIODS[::-1]:
+        num, duration = divmod(duration, period)
+        if num:
+            p = '{0}{1}'.format(unit, 's'*(num!=1))
+            runtime.append('{0} {1}'.format(num, p))
+
+    runtime.append('{0} second{1}'.format(duration, 's'*(duration!=1)))
+
+    return ', '.join(runtime)
 
 
 def i2f(int):
